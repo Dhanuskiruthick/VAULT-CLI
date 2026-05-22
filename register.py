@@ -1,43 +1,34 @@
-import sqlite3
 import bcrypt
 import getpass
+from database import get_conn
 
-conn = sqlite3.connect("vault.db")
-cursor = conn.cursor()
+def register_user():
+    conn = get_conn()
+    cursor = conn.cursor()
 
-username = input("Enter username: ")
+    username = input("Enter username: ")
+    password = getpass.getpass("Enter password: ")
 
-password = getpass.getpass("Enter password: ")
+    if len(username) < 3 or len(username) > 20:
+        print("Invalid username length")
+        return
 
-# USERNAME VALIDATION
-if len(username) < 3:
-    print("Username too short!")
-    exit()
+    if len(password) < 8 or len(password) > 64:
+        print("Invalid password length")
+        return
 
-if len(username) > 20:
-    print("Username too long!")
-    exit()
+    hashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt())
 
+    try:
+        cursor.execute("""
+        INSERT INTO users (username, password_hash)
+        VALUES (?, ?)
+        """, (username, hashed.decode()))
 
-# PASSWORD VALIDATION
-if len(password) < 8:
-    print("Password must be at least 8 characters!")
-    exit()
+        conn.commit()
+        print("User registered successfully")
 
-if len(password) > 64:
-    print("Password too long!")
-    exit()
+    except Exception:
+        print("Username already exists")
 
-hashed_password = bcrypt.hashpw(
-    password.encode(),
-    bcrypt.gensalt()
-)
-
-cursor.execute(
-    "INSERT INTO users (username, password_hash) VALUES (?, ?)",
-    (username, hashed_password.decode())
-)
-
-conn.commit()
-
-print("User registered successfully!")
+    conn.close()
