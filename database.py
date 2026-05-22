@@ -1,17 +1,23 @@
 import sqlite3
 
-conn = sqlite3.connect("vault.db")
+DB_NAME = "vault.db"
 
-cursor = conn.cursor()
+def get_conn():
+    return sqlite3.connect(DB_NAME)
 
-cursor.execute("""
-               CREATE TABLE IF NOT EXISTS users(
-               id INTEGER PRIMARY KEY AUTOINCREMENT,
-               username TEXT UNIQUE NOT NULL,
-               password_hash TEXT NOT NULL
-               )
- """ )
+def init_db():
+    conn = get_conn()
+    cursor = conn.cursor()
 
-conn.commit()
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT UNIQUE NOT NULL,
+        password_hash TEXT NOT NULL,
+        failed_attempts INTEGER DEFAULT 0,
+        lock_until INTEGER DEFAULT 0
+    )
+    """)
 
-print("------Database initialized successfully------")
+    conn.commit()
+    conn.close()
