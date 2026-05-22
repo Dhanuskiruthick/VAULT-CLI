@@ -1,11 +1,8 @@
-import sqlite3
 import time
 import bcrypt
 import getpass
 import logging
-import os
-print(os.getcwd())
-print(os.path.abspath("vault.db"))
+from database import get_conn
 
 logging.basicConfig(
     filename="audit.log",
@@ -13,69 +10,63 @@ logging.basicConfig(
     format="%(asctime)s | %(levelname)s | %(message)s"
 )
 
-conn = sqlite3.connect("vault.db")
+def login_user():
+    conn = get_conn()
+    cursor = conn.cursor()
 
-cursor = conn.cursor()
+    username = input("Username: ")
+    password = getpass.getpass("Password: ")
 
-#Login system
-username = input("Username: ")
-password = getpass.getpass("Password: ")
+    cursor.execute("""
+    SELECT password_hash, failed_attempts, lock_until
+    FROM users WHERE username = ?
+    """, (username,))
 
-cursor.execute(
-    "SELECT password_hash , failed_attempts , lock_until FROM users WHERE username = ?",
-    (username,)
-)
+    result = cursor.fetchone()
 
-result = cursor.fetchone()
+    fake_hash = bcrypt.hashpw(b"fake", bcrypt.gensalt())
 
-#Fake hash for taking consistency 
-fake_hash = bcrypt.hashpw(b"fake", bcrypt.gensalt())
+    if not result:
+        bcrypt.checkpw(password.encode(), fake_hash)
+        print("Invalid credentials")
+        return
 
-if result is None:
-    # still run bcrypt to avoid timing leak
-    bcrypt.checkpw(password.encode() , fake_hash)
-    print("Invalid Credentials :( ")
-else:
-    stored_hash ,failed_attempts , lock_until = result
-    stored_hash = stored_hash.encode()  # Convert to bytes
-
+    stored_hash, failed_attempts, lock_until = result
     current_time = int(time.time())
 
-    #CHECK LOCK
     if lock_until and current_time < lock_until:
-        print("Account is locked . Try again later :( ")
-        logging.warning(f"ACCOUNT_LOCKED USER={username}")
-        exit()
+        print("Account locked. Try later.")
+        logging.warning(f"LOCKED USER={username}")
+        return
 
-    #VERIFY PASSWORD    
-    if bcrypt.checkpw(password.encode(), stored_hash):
-
-        #RESET on SUCCESS
-        cursor.execute(
-            "UPDATE users SET failed_attempts = 0 , lock_until = 0 WHERE username = ?",
-            (username,)
-        )  
-        conn.commit() 
-        print("Login successful!")
-        logging.info(f"LOGIN_SUCCESS USER={username}")
-    else:
-        failed_attempts +=1
-
-        #LOCK RULE ( after 3 attempts)
-        if failed_attempts >= 3:
-            lock_time = current_time + 60   # 1 minute lock
-
-            cursor.execute(
-                "UPDATE users SET failed_attempts = ? , lock_until = ? WHERE username = ?",
-                (failed_attempts , lock_time , username) 
-                )
-            
-        else:
-            cursor.execute(
-                "UPDATE users SET failed_attempts = ? WHERE username = ?",
-                (failed_attempts, username)
-            )
+    if bcrypt.checkpw(password.encode(), stored_hash.encode()):
+        cursor.execute("""
+        UPDATE users
+        SET failed_attempts = 0, lock_until = 0
+        WHERE username = ?
+        """, (username,))
 
         conn.commit()
-        print("Invalid Credentials :( ") 
-        logging.warning(f"LOGIN_FAILED USER={username}")   
+
+        print("Login successful")
+        logging.info(f"LOGIN_SUCCESS USER={username}")
+
+    else:
+        failed_attempts += 1
+
+        if failed_attempts >= 3:
+            lock_until = current_time + 60
+            print("Account locked for 60 seconds")
+
+        cursor.execute("""
+        UPDATE users
+        SET failed_attempts = ?, lock_until = ?
+        WHERE username = ?
+        """, (failed_attempts, lock_until, username))
+
+        conn.commit()
+
+        print("Invalid credentials")
+        logging.warning(f"LOGIN_FAILED USER={username}")
+
+    conn.close()
