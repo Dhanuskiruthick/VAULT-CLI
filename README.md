@@ -116,8 +116,8 @@ VAULT CLI is a terminal-based authentication system that demonstrates how passwo
 
 ```bash
 # Clone the repository
-git clone https://github.com/dhanuskiruthick/vault-cli.git
-cd vault-cli
+git clone https://github.com/dhanuskiruthick/VAULT-CLI.git
+cd VAULT CLI
 
 # Install dependencies
 pip install -r requirements.txt
